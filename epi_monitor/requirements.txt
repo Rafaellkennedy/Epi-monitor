@@ -1,0 +1,46 @@
+# =========================================================
+# EPI Monitor - Dependências do Projeto
+# Testado com Python 3.13
+# =========================================================
+
+# --- Interface Gráfica ---
+PySide6>=6.7.0
+
+# --- Visão Computacional / IA ---
+ultralytics>=8.3.0          # YOLOv11
+opencv-python>=4.10.0
+numpy>=1.26.0
+torch>=2.3.0                # instalar build com suporte CUDA se houver GPU NVIDIA
+torchvision>=0.18.0
+
+# --- Banco de Dados ---
+SQLAlchemy>=2.0.30
+psycopg2-binary>=2.9.9      # driver PostgreSQL
+
+# --- Segurança ---
+bcrypt>=4.1.3
+python-dotenv>=1.0.1
+
+# --- Câmeras ONVIF ---
+onvif-zeep>=0.2.12
+WSDiscovery>=2.0.0
+
+# --- Empacotamento / Instalador ---
+pyinstaller>=6.8.0
+
+# =========================================================
+# Notas de instalação:
+#
+# 1) GPU NVIDIA (recomendado para produção com muitas câmeras):
+#    Instale o PyTorch com suporte CUDA ANTES deste requirements.txt,
+#    seguindo as instruções em https://pytorch.org/get-started/locally/
+#    Exemplo (CUDA 12.1):
+#    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#
+# 2) FFmpeg deve estar instalado no sistema operacional (não é pacote pip)
+#    e disponível no PATH, pois o OpenCV usa o backend FFmpeg para RTSP.
+#    Windows: baixar de https://ffmpeg.org/download.html e adicionar ao PATH.
+#
+# 3) PostgreSQL deve estar instalado e em execução, com um banco de dados
+#    criado (ex.: CREATE DATABASE epi_monitor;) antes do primeiro start.
+# =========================================================
