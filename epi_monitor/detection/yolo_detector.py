@@ -138,6 +138,44 @@ class YoloDetector:
 
         return detections
 
+    def track(self, frame: np.ndarray) -> List[Detection]:
+        """Inferência com rastreamento temporal (ByteTrack) ativado."""
+        if self._model is None:
+            raise RuntimeError("Modelo YOLO não foi carregado corretamente.")
+
+        results = self._model.track(
+            source=frame,
+            conf=self.confidence,
+            iou=self.iou,
+            imgsz=self.img_size,
+            device=self.device,
+            persist=True,
+            tracker="bytetrack.yaml",
+            verbose=False,
+        )
+
+        detections: List[Detection] = []
+        if not results or results[0].boxes is None:
+            return detections
+
+        result = results[0]
+        for box in result.boxes:
+            cls_id = int(box.cls[0].item())
+            conf = float(box.conf[0].item())
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            track_id = int(box.id[0].item()) if box.id is not None else None
+            nome_classe = self.class_names.get(cls_id, result.names.get(cls_id, f"classe_{cls_id}"))
+
+            detections.append(Detection(
+                classe_id=cls_id,
+                classe_nome=nome_classe,
+                confianca=conf,
+                bbox=BoundingBox(x1, y1, x2, y2),
+                track_id=track_id,
+            ))
+
+        return detections
+
     def predict_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
         """
         Executa a inferência em um LOTE de frames BGR simultaneamente na GPU/CPU.
