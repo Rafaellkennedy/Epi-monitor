@@ -10,6 +10,7 @@ aqui, isolando essa responsabilidade de renderização da lógica de negócio.
 
 from __future__ import annotations
 
+import time
 import cv2
 import numpy as np
 from PySide6.QtCore import Qt
@@ -38,9 +39,12 @@ _STATUS_LABEL = {
 class CameraWidget(QFrame):
     """Um "card" de câmera individual: vídeo + cabeçalho com nome/status."""
 
-    def __init__(self, camera_id: int, nome: str) -> None:
+    def __init__(self, camera_id: int, nome: str, max_ui_fps: int = 5) -> None:
         super().__init__()
         self.camera_id = camera_id
+        self.max_ui_fps = max_ui_fps
+        self._min_interval = 1.0 / max(max_ui_fps, 1)
+        self._ultimo_render_ts = 0.0
         self.setObjectName("card")
         self._montar_ui(nome)
 
@@ -67,14 +71,20 @@ class CameraWidget(QFrame):
         layout.addWidget(self.label_video)
 
     def atualizar_frame(self, frame_bgr: np.ndarray) -> None:
-        """Recebe um frame OpenCV (BGR) e atualiza a exibição."""
+        """Recebe um frame OpenCV (BGR) e atualiza a exibição respeitando o limite de FPS da UI."""
+        agora = time.time()
+        if (agora - self._ultimo_render_ts) < self._min_interval:
+            return  # Descarta o redesenho no widget para poupar CPU na UI Thread
+
+        self._ultimo_render_ts = agora
+
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         h, w, ch = frame_rgb.shape
         bytes_per_line = ch * w
         qimg = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qimg).scaled(
             self.label_video.width(), self.label_video.height(),
-            Qt.KeepAspectRatio, Qt.SmoothTransformation
+            Qt.KeepAspectRatio, Qt.FastTransformation
         )
         self.label_video.setPixmap(pixmap)
 
