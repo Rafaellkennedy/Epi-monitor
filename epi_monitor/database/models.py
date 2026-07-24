@@ -24,7 +24,7 @@ from typing import Optional, List
 
 from sqlalchemy import (
     String, Integer, Boolean, DateTime, ForeignKey, Float, Text,
-    Enum as SAEnum, UniqueConstraint, func
+    Enum as SAEnum, UniqueConstraint, Index, func
 )
 from sqlalchemy.orm import (
     DeclarativeBase, Mapped, mapped_column, relationship
@@ -130,6 +130,10 @@ class Evento(Base):
     uma conformidade, ou um evento de sistema (câmera caiu, etc.).
     """
     __tablename__ = "eventos"
+    __table_args__ = (
+        Index("idx_evento_data_tipo", "data_hora", "tipo_evento"),
+        Index("idx_evento_camera_tipo_data", "camera_id", "tipo_evento", "data_hora"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     camera_id: Mapped[Optional[int]] = mapped_column(ForeignKey("cameras.id", ondelete="SET NULL"), nullable=True)
