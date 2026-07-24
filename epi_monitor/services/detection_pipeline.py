@@ -23,9 +23,9 @@ Desempenho com até 50 câmeras:
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Optional
 
 from config.settings import settings
@@ -57,19 +57,23 @@ class DetectionPipeline:
         self,
         camera_manager: CameraManager,
         alert_service: AlertService,
-        max_workers_inferencia: int = 4,
+        batch_size: int = 4,
+        timeout_ms: float = 0.015,
     ) -> None:
         self.camera_manager = camera_manager
         self.alert_service = alert_service
         self.recording_service = RecordingService()
         self.detector = YoloDetector.get_instance()
+        self.batch_size = batch_size
+        self.timeout_sec = timeout_ms
 
-        self._executor = ThreadPoolExecutor(max_workers=max_workers_inferencia, thread_name_prefix="inferencia")
+        self._frame_queue: queue.Queue = queue.Queue(maxsize=100)
         self._checkers: dict[int, EPIChecker] = {}
         self._frame_callback: Optional[FrameCallback] = None
         self._contador_frames: dict[int, int] = {}
         self._running = False
         self._monitor_thread: Optional[threading.Thread] = None
+        self._batch_worker_thread: Optional[threading.Thread] = None
 
     # ------------------------------------------------------------------
     def registrar_callback_frame(self, callback: FrameCallback) -> None:
@@ -99,18 +103,20 @@ class DetectionPipeline:
         self._running = False
         if self._monitor_thread:
             self._monitor_thread.join(timeout=3)
+        if self._batch_worker_thread:
+            self._batch_worker_thread.join(timeout=3)
         self.camera_manager.parar_todas()
-        self._executor.shutdown(wait=False)
 
     # ------------------------------------------------------------------
     def start_loop_processamento(self) -> None:
-        """Inicia a thread que, periodicamente, submete cada câmera ativa
-        para inferência no pool de threads."""
+        """Inicia as threads de monitoramento das câmeras e de inferência em lote."""
         if self._running:
             return
         self._running = True
         self._monitor_thread = threading.Thread(target=self._loop_processamento, daemon=True, name="pipeline-loop")
+        self._batch_worker_thread = threading.Thread(target=self._loop_batch_inference, daemon=True, name="batch-worker")
         self._monitor_thread.start()
+        self._batch_worker_thread.start()
 
     def _loop_processamento(self) -> None:
         intervalo = 1.0 / max(settings.camera.target_fps, 1)
@@ -127,17 +133,50 @@ class DetectionPipeline:
                 if frame is None:
                     continue
 
-                # Cada câmera é processada em uma task do pool, para não
-                # bloquear o loop principal esperando a inferência de uma
-                # câmera enquanto outras 49 estão esperando na fila.
-                self._executor.submit(self._processar_frame, camera_id, frame, stream)
+                try:
+                    self._frame_queue.put_nowait((camera_id, frame, stream))
+                except queue.Full:
+                    pass  # descarta o frame se a fila estiver cheia para não acumular latência
 
             time.sleep(intervalo)
 
     # ------------------------------------------------------------------
-    def _processar_frame(self, camera_id: int, frame, stream) -> None:
-        try:
-            deteccoes = self.detector.predict(frame)
+    def _loop_batch_inference(self) -> None:
+        """Thread consumidora que monta lotes de quadros e realiza inferência em lote na GPU/CPU."""
+        while self._running:
+            items = []
+            t_inicio = time.time()
+            while len(items) < self.batch_size and (time.time() - t_inicio) < self.timeout_sec:
+                try:
+                    item = self._frame_queue.get(timeout=0.005)
+                    items.append(item)
+                except queue.Empty:
+                    break
+
+            if not items:
+                continue
+
+            camera_ids = [it[0] for it in items]
+            frames = [it[1] for it in items]
+            streams = [it[2] for it in items]
+
+            try:
+                batch_deteccoes = self.detector.predict_batch(frames)
+                for camera_id, frame, stream, deteccoes in zip(camera_ids, frames, streams, batch_deteccoes):
+                    checker = self._checkers.get(camera_id)
+                    if checker is None:
+                        continue
+
+                    resultado = checker.analisar(camera_id, frame, deteccoes)
+
+                    if self._frame_callback:
+                        self._frame_callback(camera_id, resultado)
+
+                    if resultado.possui_infracao:
+                        self._tratar_infracao(camera_id, resultado, stream)
+
+            except Exception as e:
+                logger.exception(f"Erro ao processar lote de inferência: {e}")
             checker = self._checkers.get(camera_id)
             if checker is None:
                 return
