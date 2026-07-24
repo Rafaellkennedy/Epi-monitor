@@ -2,19 +2,21 @@
 # EPI Monitor - .gitignore
 # ==========================================
 
-# --- Ambientes Virtuais ---
+# --- Ambientes Virtuais (qualquer local) ---
 venv/
-venv_mac/
-env/
+venv*/
 .venv/
+env/
 env*/
 ENV/
 
-# --- Cache do Python e Compilação ---
+# --- Cache do Python e Compilação (qualquer nível) ---
+**/__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+**/.pytest_cache/
 .pytest_cache/
 .coverage
 htmlcov/
@@ -24,31 +26,36 @@ htmlcov/
 # --- Configurações Locais e Sensíveis ---
 .env
 .env.local
+.env.*.local
 *.pem
 *.key
 
-# --- Armazenamento de Evidências e Logs Locais ---
-epi_monitor/storage/snapshots/*
-!epi_monitor/storage/snapshots/.gitkeep
-epi_monitor/storage/clips/*
-!epi_monitor/storage/clips/.gitkeep
-epi_monitor/storage/logs/*
-!epi_monitor/storage/logs/.gitkeep
+# --- Armazenamento de Evidências, Logs e Mídias ---
 storage/
+**/storage/snapshots/*
+!**/storage/snapshots/.gitkeep
+**/storage/clips/*
+!**/storage/clips/.gitkeep
+**/storage/logs/*
+!**/storage/logs/.gitkeep
 
-# --- Pesos do Modelo YOLO (Arquivos pesados) ---
-epi_monitor/resources/models/*.pt
-!epi_monitor/resources/models/.gitkeep
+# --- Pesos do Modelo YOLO (Arquivos .pt pesados) ---
+**/*.pt
+*.pt
+!**/resources/models/.gitkeep
 
 # --- Compilação e Empacotamento (PyInstaller / Inno Setup) ---
 installer/dist/
 installer/build/
 installer/output/
+dist/
+build/
 *.exe
 *.spec.bak
 
 # --- Dados do Docker / PostgreSQL ---
 postgres_data/
+**/postgres_data/
 
 # --- IDEs e Sistema Operacional ---
 .DS_Store

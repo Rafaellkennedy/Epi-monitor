@@ -1,0 +1,24 @@
+# .dockerignore
+.git
+.gitignore
+venv/
+venv_mac/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.vscode/
+.idea/
+.DS_Store
+installer/dist/
+installer/build/
+postgres_data/
+epi_monitor/storage/snapshots/*
+!epi_monitor/storage/snapshots/.gitkeep
+epi_monitor/storage/clips/*
+!epi_monitor/storage/clips/.gitkeep
+epi_monitor/storage/logs/*
+!epi_monitor/storage/logs/.gitkeep
