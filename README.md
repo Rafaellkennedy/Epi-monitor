@@ -81,6 +81,99 @@ O sistema adota os princípios de **Clean Architecture** (Arquitetura Limpa), vi
 
 ---
 
+### 🗄️ Esquema do Banco de Dados (Diagrama de Entidade-Relacionamento - ER)
+
+```mermaid
+erDiagram
+    usuarios ||--o{ alertas : "reconhece"
+    usuarios ||--o{ logs : "gera"
+    cameras ||--o{ camera_epis : "exige"
+    cameras ||--o{ eventos : "registra"
+    eventos ||--o{ alertas : "gera"
+
+    usuarios {
+        int id PK
+        string nome_completo
+        string login UK
+        string email
+        string senha_hash
+        enum nivel_acesso
+        boolean ativo
+        int tentativas_login_falhas
+        datetime bloqueado_ate
+        datetime criado_em
+        datetime ultimo_login
+    }
+
+    cameras {
+        int id PK
+        string nome
+        string localizacao
+        enum protocolo
+        string url_rtsp
+        string onvif_host
+        int onvif_port
+        string onvif_usuario
+        string onvif_senha
+        boolean ativa
+        enum status
+        int fps_alvo
+        text zona_deteccao_json
+        datetime criado_em
+        datetime atualizado_em
+    }
+
+    camera_epis {
+        int id PK
+        int camera_id FK
+        enum tipo_epi
+        boolean obrigatorio
+    }
+
+    eventos {
+        int id PK
+        int camera_id FK
+        enum tipo_evento
+        text epis_ausentes_json
+        float confianca_media
+        string caminho_snapshot
+        string caminho_video_clip
+        datetime data_hora IX
+        text observacoes
+    }
+
+    alertas {
+        int id PK
+        int evento_id FK
+        enum severidade
+        enum status
+        enum canal
+        text mensagem
+        datetime criado_em
+        datetime reconhecido_em
+        int reconhecido_por_id FK
+    }
+
+    configuracoes {
+        int id PK
+        string chave UK
+        text valor
+        string descricao
+        datetime atualizado_em
+    }
+
+    logs {
+        int id PK
+        int usuario_id FK
+        enum nivel
+        string origem
+        text mensagem
+        datetime data_hora IX
+    }
+```
+
+---
+
 ## 🛠️ Tecnologias e Ferramentas Utilizadas
 
 - **Linguagem**: Python 3.12 / 3.13
