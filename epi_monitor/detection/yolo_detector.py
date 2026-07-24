@@ -138,6 +138,46 @@ class YoloDetector:
 
         return detections
 
+    def predict_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
+        """
+        Executa a inferência em um LOTE de frames BGR simultaneamente na GPU/CPU.
+        Retorna uma lista de listas de Detection (uma lista para cada frame do lote).
+        """
+        if self._model is None:
+            raise RuntimeError("Modelo YOLO não foi carregado corretamente.")
+
+        if not frames:
+            return []
+
+        results = self._model.predict(
+            source=frames,
+            conf=self.confidence,
+            iou=self.iou,
+            imgsz=self.img_size,
+            device=self.device,
+            verbose=False,
+        )
+
+        resultados_batch: List[List[Detection]] = []
+        for result in results:
+            detections: List[Detection] = []
+            if result.boxes is not None:
+                for box in result.boxes:
+                    cls_id = int(box.cls[0].item())
+                    conf = float(box.conf[0].item())
+                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                    nome_classe = self.class_names.get(cls_id, result.names.get(cls_id, f"classe_{cls_id}"))
+
+                    detections.append(Detection(
+                        classe_id=cls_id,
+                        classe_nome=nome_classe,
+                        confianca=conf,
+                        bbox=BoundingBox(x1, y1, x2, y2),
+                    ))
+            resultados_batch.append(detections)
+
+        return resultados_batch
+
     def reload_model(self, new_path: str | None = None) -> None:
         """Permite trocar o modelo em tempo de execução (ex.: após retreinar)."""
         if new_path:
