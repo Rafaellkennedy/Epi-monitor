@@ -39,7 +39,7 @@ pessoa.conforme = len(ausentes) == 0
 1. **Habilitar Tracking no YOLO (ByteTrack)**: Usar `model.track(..., persist=True, tracker="bytetrack.yaml")` no `YoloDetector` para que cada pessoa receba um `track_id` numérico consistente ao se mover pela imagem.
 2. **Filtro de Debounce Temporal no `EPIChecker`**:
    - Manter um dicionário de histórico por `track_id`: `self._historico_infracoes[track_id] = contador`.
-   - Se a pessoa for vista sem capacete por **3 quadros consecutivos** (configurável), aí sim confirmar a infração.
+   - Se a pessoa for vista sem capacete por **30 segundos** (isso deve ser configurável), aí sim confirmar a infração.
    - Se a pessoa reaparecer conforme, zerar o contador do `track_id`.
 
 ### Passo a Passo de Código:
