@@ -17,6 +17,7 @@ Estratégia de associação pessoa <-> EPI:
 from __future__ import annotations
 
 import datetime
+import time
 from typing import Dict, List, Optional
 
 import cv2
@@ -59,16 +60,19 @@ def _ponto_dentro_bbox(ponto: tuple[float, float], bbox: BoundingBox, margem: in
 
 
 class EPIChecker:
-    """Analisa detecções brutas e determina conformidade por pessoa."""
+    """Analisa detecções brutas e determina conformidade por pessoa com debounce temporal em segundos."""
 
-    def __init__(self, epis_obrigatorios: List[TipoEPI]):
+    def __init__(self, epis_obrigatorios: List[TipoEPI], min_segundos_infracao: float = 30.0):
         """
         Args:
-            epis_obrigatorios: lista de EPIs que DEVEM estar presentes
-                                nesta câmera (configurado por câmera no
-                                cadastro, tabela `camera_epis`).
+            epis_obrigatorios: lista de EPIs que DEVEM estar presentes nesta câmera.
+            min_segundos_infracao: tempo contínuo em segundos (default: 30s) sem o EPI
+                                   necessário para confirmar a infração (debounce temporal).
         """
         self.epis_obrigatorios = epis_obrigatorios
+        self.min_segundos_infracao = min_segundos_infracao
+        # {track_id: timestamp_primeira_deteccao_sem_epi}
+        self._primeiro_timestamp_infracao: Dict[int, float] = {}
 
     def analisar(self, camera_id: int, frame: np.ndarray, deteccoes: List[Detection]) -> ResultadoAnalise:
         pessoas_det = [d for d in deteccoes if d.classe_nome == "pessoa"]
@@ -85,6 +89,8 @@ class EPIChecker:
             )]
 
         pessoas_analisadas: List[PessoaAnalisada] = []
+        agora = time.time()
+
         for pessoa_det in pessoas_det:
             pessoa = PessoaAnalisada(bbox_pessoa=pessoa_det.bbox, track_id=pessoa_det.track_id)
             epis_presentes_pessoa: set[TipoEPI] = set()
@@ -111,8 +117,24 @@ class EPIChecker:
                 if ausencia_explicita or sem_presenca:
                     ausentes.append(epi_obrig)
 
-            pessoa.epis_ausentes = ausentes
-            pessoa.conforme = len(ausentes) == 0
+            tem_ausencia = len(ausentes) > 0
+            t_id = pessoa.track_id
+
+            if t_id is not None:
+                if tem_ausencia:
+                    if t_id not in self._primeiro_timestamp_infracao:
+                        self._primeiro_timestamp_infracao[t_id] = agora
+
+                    tempo_decorrido = agora - self._primeiro_timestamp_infracao[t_id]
+                    confirmado_infracao = tempo_decorrido >= self.min_segundos_infracao
+                else:
+                    self._primeiro_timestamp_infracao.pop(t_id, None)
+                    confirmado_infracao = False
+            else:
+                confirmado_infracao = tem_ausencia  # Fallback sem tracking
+
+            pessoa.epis_ausentes = ausentes if confirmado_infracao else []
+            pessoa.conforme = not confirmado_infracao
             pessoas_analisadas.append(pessoa)
 
         frame_anotado = self._desenhar_anotacoes(frame.copy(), pessoas_analisadas)
