@@ -22,9 +22,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copia e instala as dependências Python
+# Copia e instala as dependências Python (PyTorch CPU otimizado primeiro)
 COPY epi_monitor/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir --default-timeout=1000 --retries 10 -r requirements.txt
 
 # Copia o código-fonte da aplicação
 COPY epi_monitor/ ./epi_monitor/
