@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Callable
 
@@ -73,7 +74,8 @@ class CameraStream:
         # Mantém os últimos N segundos em memória para poder gravar também
         # o instante ANTES do disparo do alerta.
         self._pre_buffer_seconds = 5
-        self._pre_buffer: list[tuple[float, np.ndarray]] = []
+        self._pre_buffer_max_frames = max(self.config.fps_alvo, 1) * self._pre_buffer_seconds
+        self._pre_buffer: deque[tuple[float, bytes]] = deque(maxlen=self._pre_buffer_max_frames)
 
     # ------------------------------------------------------------------
     # Ciclo de vida
@@ -159,15 +161,23 @@ class CameraStream:
             return None if self._latest_frame is None else self._latest_frame.copy()
 
     def get_pre_buffer(self) -> list[np.ndarray]:
-        """Retorna cópia dos frames dos últimos segundos (para gravação de clipe)."""
+        """Retorna cópia decodificada dos frames dos últimos segundos (para gravação de clipe)."""
         with self._lock:
-            return [f.copy() for _, f in self._pre_buffer]
+            copia_buffer = list(self._pre_buffer)
+
+        frames_decodificados: list[np.ndarray] = []
+        for _, jpg_bytes in copia_buffer:
+            nparr = np.frombuffer(jpg_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is not None:
+                frames_decodificados.append(img)
+        return frames_decodificados
 
     def _atualizar_pre_buffer(self, frame: np.ndarray) -> None:
         agora = time.time()
-        self._pre_buffer.append((agora, frame))
-        limite = agora - self._pre_buffer_seconds
-        self._pre_buffer = [(t, f) for (t, f) in self._pre_buffer if t >= limite]
+        ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ok:
+            self._pre_buffer.append((agora, buffer.tobytes()))
 
     def _set_status(self, status: StatusCamera) -> None:
         if status != self.status:

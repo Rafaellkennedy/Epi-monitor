@@ -1,0 +1,64 @@
+# ==========================================
+# EPI Monitor - .gitignore
+# ==========================================
+
+# --- Ambientes Virtuais ---
+venv/
+venv_mac/
+env/
+.venv/
+env*/
+ENV/
+
+# --- Cache do Python e Compilação ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Configurações Locais e Sensíveis ---
+.env
+.env.local
+*.pem
+*.key
+
+# --- Armazenamento de Evidências e Logs Locais ---
+epi_monitor/storage/snapshots/*
+!epi_monitor/storage/snapshots/.gitkeep
+epi_monitor/storage/clips/*
+!epi_monitor/storage/clips/.gitkeep
+epi_monitor/storage/logs/*
+!epi_monitor/storage/logs/.gitkeep
+storage/
+
+# --- Pesos do Modelo YOLO (Arquivos pesados) ---
+epi_monitor/resources/models/*.pt
+!epi_monitor/resources/models/.gitkeep
+
+# --- Compilação e Empacotamento (PyInstaller / Inno Setup) ---
+installer/dist/
+installer/build/
+installer/output/
+*.exe
+*.spec.bak
+
+# --- Dados do Docker / PostgreSQL ---
+postgres_data/
+
+# --- IDEs e Sistema Operacional ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
