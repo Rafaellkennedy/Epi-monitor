@@ -194,12 +194,13 @@ class DetectionPipeline:
                 continue
 
             snapshot_path = self.recording_service.salvar_snapshot(camera_id, resultado.frame_anotado)
-            self.recording_service.gravar_clipe_async(camera_id, stream, fps=camera.fps_alvo)
+            video_path = self.recording_service.gravar_clipe_async(camera_id, stream, fps=camera.fps_alvo)
 
             evento = EventService.registrar_evento(
                 camera_id=camera_id,
                 pessoa=pessoa,
                 snapshot_path=snapshot_path,
+                video_clip_path=video_path,
             )
 
             self.alert_service.disparar_alerta(

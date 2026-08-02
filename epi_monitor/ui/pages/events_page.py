@@ -74,9 +74,9 @@ class EventsPage(QWidget):
         filtros.addStretch()
         layout.addLayout(filtros)
 
-        self.tabela = QTableWidget(0, 6)
+        self.tabela = QTableWidget(0, 7)
         self.tabela.setHorizontalHeaderLabels(
-            ["Data/Hora", "Câmera", "Tipo", "EPIs Ausentes", "Confiança", "Evidência"]
+            ["Data/Hora", "Câmera", "Tipo", "EPIs Ausentes", "Confiança", "Foto", "Vídeo"]
         )
         self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.tabela.verticalHeader().setVisible(False)
@@ -109,12 +109,24 @@ class EventsPage(QWidget):
             self.tabela.setItem(row, 4, QTableWidgetItem(confianca))
 
             if evento.caminho_snapshot:
-                btn_ver = QPushButton("Ver evidência")
+                btn_ver = QPushButton("Ver Foto")
                 btn_ver.clicked.connect(lambda _, p=evento.caminho_snapshot: self._abrir_snapshot(p))
                 self.tabela.setCellWidget(row, 5, btn_ver)
             else:
                 self.tabela.setItem(row, 5, QTableWidgetItem("-"))
 
+            if evento.caminho_video_clip:
+                btn_vid = QPushButton("Abrir Vídeo")
+                btn_vid.clicked.connect(lambda _, p=evento.caminho_video_clip: self._abrir_video(p))
+                self.tabela.setCellWidget(row, 6, btn_vid)
+            else:
+                self.tabela.setItem(row, 6, QTableWidgetItem("-"))
+
     def _abrir_snapshot(self, caminho: str) -> None:
         dialog = SnapshotDialog(caminho, parent=self)
         dialog.exec()
+
+    def _abrir_video(self, caminho: str) -> None:
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl.fromLocalFile(caminho))
