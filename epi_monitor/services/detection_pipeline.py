@@ -177,20 +177,6 @@ class DetectionPipeline:
 
             except Exception as e:
                 logger.exception(f"Erro ao processar lote de inferência: {e}")
-            checker = self._checkers.get(camera_id)
-            if checker is None:
-                return
-
-            resultado = checker.analisar(camera_id, frame, deteccoes)
-
-            if self._frame_callback:
-                self._frame_callback(camera_id, resultado)
-
-            if resultado.possui_infracao:
-                self._tratar_infracao(camera_id, resultado, stream)
-
-        except Exception as e:
-            logger.exception(f"Erro ao processar frame da câmera {camera_id}: {e}")
 
     def _tratar_infracao(self, camera_id: int, resultado: ResultadoAnalise, stream) -> None:
         """Para cada pessoa não-conforme no frame, registra evento e dispara alerta."""
