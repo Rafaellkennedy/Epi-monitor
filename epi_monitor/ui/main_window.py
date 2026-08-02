@@ -29,6 +29,7 @@ from ui.pages.dashboard_page import DashboardPage
 from ui.pages.cameras_page import CamerasPage
 from ui.pages.events_page import EventsPage
 from ui.pages.settings_page import SettingsPage
+from ui.pages.users_page import UsersPage
 from ui.theme import apply_theme
 
 
@@ -76,8 +77,9 @@ class MainWindow(QMainWindow):
         self.pagina_eventos = EventsPage()
         self.pagina_config = SettingsPage()
         self.pagina_config.tema_alterado.connect(self._trocar_tema)
+        self.pagina_usuarios = UsersPage()
 
-        for pagina in (self.pagina_dashboard, self.pagina_cameras, self.pagina_eventos, self.pagina_config):
+        for pagina in (self.pagina_dashboard, self.pagina_cameras, self.pagina_eventos, self.pagina_config, self.pagina_usuarios):
             self.stack.addWidget(pagina)
 
         area_direita.addWidget(self.stack)
@@ -107,6 +109,8 @@ class MainWindow(QMainWindow):
             ("📋  Eventos", 2),
             ("⚙️  Configurações", 3),
         ]
+        if self.usuario.nivel_acesso == NivelAcesso.ADMINISTRADOR:
+            botoes_info.append(("👥  Usuários", 4))
         for texto, indice in botoes_info:
             btn = QPushButton(texto)
             btn.setObjectName("sidebarButton")
