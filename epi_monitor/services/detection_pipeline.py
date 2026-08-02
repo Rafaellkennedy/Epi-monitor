@@ -83,7 +83,7 @@ class DetectionPipeline:
     def iniciar_camera(self, camera: Camera) -> None:
         """Inicia captura + análise para uma câmera cadastrada."""
         epis_obrigatorios = CameraRepository.epis_obrigatorios_da_camera(camera.id)
-        self._checkers[camera.id] = EPIChecker(epis_obrigatorios)
+        self._checkers[camera.id] = EPIChecker(epis_obrigatorios, zona_roi_json=camera.zona_deteccao_json)
         self._contador_frames[camera.id] = 0
 
         config = CameraConfig(id=camera.id, nome=camera.nome, url_rtsp=camera.url_rtsp, fps_alvo=camera.fps_alvo)
