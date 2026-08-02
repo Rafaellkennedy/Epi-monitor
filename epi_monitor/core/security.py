@@ -118,3 +118,49 @@ _HIERARQUIA = {
 def possui_permissao(nivel_usuario: NivelAcesso, nivel_minimo_exigido: NivelAcesso) -> bool:
     """Retorna True se o nível do usuário é igual ou superior ao exigido."""
     return _HIERARQUIA.get(nivel_usuario, 0) >= _HIERARQUIA.get(nivel_minimo_exigido, 0)
+
+
+# --------------------------------------------------------------------------
+# Serviço de Usuários (CRUD e Gestão)
+# --------------------------------------------------------------------------
+class UserService:
+    """Serviço para gestão e administração de contas de usuário (CRUD)."""
+
+    @staticmethod
+    def criar_usuario(nome_completo: str, login: str, email: str, senha_plana: str, nivel: NivelAcesso) -> Usuario:
+        with get_session() as session:
+            novo = Usuario(
+                nome_completo=nome_completo,
+                login=login,
+                email=email,
+                senha_hash=hash_password(senha_plana),
+                nivel_acesso=nivel,
+                ativo=True
+            )
+            session.add(novo)
+            session.commit()
+            session.refresh(novo)
+            session.expunge(novo)
+            return novo
+
+    @staticmethod
+    def alternar_status(usuario_id: int) -> bool:
+        """Ativa/Desativa um usuário."""
+        with get_session() as session:
+            usr = session.get(Usuario, usuario_id)
+            if usr:
+                usr.ativo = not usr.ativo
+                session.commit()
+                return usr.ativo
+            return False
+
+    @staticmethod
+    def redefinir_senha(usuario_id: int, nova_senha_plana: str) -> bool:
+        """Redefine a senha de um usuário."""
+        with get_session() as session:
+            usr = session.get(Usuario, usuario_id)
+            if usr:
+                usr.senha_hash = hash_password(nova_senha_plana)
+                session.commit()
+                return True
+            return False
