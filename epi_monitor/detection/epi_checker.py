@@ -17,6 +17,7 @@ Estratégia de associação pessoa <-> EPI:
 from __future__ import annotations
 
 import datetime
+import json
 import time
 from typing import Dict, List, Optional
 
@@ -62,20 +63,46 @@ def _ponto_dentro_bbox(ponto: tuple[float, float], bbox: BoundingBox, margem: in
 class EPIChecker:
     """Analisa detecções brutas e determina conformidade por pessoa com debounce temporal em segundos."""
 
-    def __init__(self, epis_obrigatorios: List[TipoEPI], min_segundos_infracao: float = 30.0):
+    def __init__(self, epis_obrigatorios: List[TipoEPI], min_segundos_infracao: float = 30.0, zona_roi_json: str | None = None):
         """
         Args:
             epis_obrigatorios: lista de EPIs que DEVEM estar presentes nesta câmera.
             min_segundos_infracao: tempo contínuo em segundos (default: 30s) sem o EPI
                                    necessário para confirmar a infração (debounce temporal).
+            zona_roi_json: string JSON contendo o array de pontos do polígono ROI.
         """
         self.epis_obrigatorios = epis_obrigatorios
         self.min_segundos_infracao = min_segundos_infracao
         # {track_id: timestamp_primeira_deteccao_sem_epi}
         self._primeiro_timestamp_infracao: Dict[int, float] = {}
+        self.poligono_roi: np.ndarray | None = self._parse_roi(zona_roi_json)
+
+    def _parse_roi(self, zona_json: str | None) -> np.ndarray | None:
+        if not zona_json:
+            return None
+        try:
+            pontos = json.loads(zona_json)
+            return np.array(pontos, dtype=np.int32)
+        except Exception:
+            return None
+
+    def _pessoa_dentro_da_roi(self, bbox_pessoa: BoundingBox) -> bool:
+        if self.poligono_roi is None:
+            return True
+
+        centro_x = (bbox_pessoa.x1 + bbox_pessoa.x2) / 2.0
+        centro_y = (bbox_pessoa.y1 + bbox_pessoa.y2) / 2.0
+        
+        # Teste de ponto dentro do polígono em OpenCV
+        res = cv2.pointPolygonTest(self.poligono_roi, (centro_x, centro_y), False)
+        return res >= 0
 
     def analisar(self, camera_id: int, frame: np.ndarray, deteccoes: List[Detection]) -> ResultadoAnalise:
-        pessoas_det = [d for d in deteccoes if d.classe_nome == "pessoa"]
+        pessoas_det_todas = [d for d in deteccoes if d.classe_nome == "pessoa"]
+        
+        # Filtra apenas pessoas dentro da zona de risco (ROI)
+        pessoas_det = [p for p in pessoas_det_todas if self._pessoa_dentro_da_roi(p.bbox)]
+        
         epis_det = [d for d in deteccoes if d.classe_nome in _CLASSE_PARA_EPI or d.classe_nome in _CLASSE_AUSENCIA]
 
         # Se o modelo não detecta a classe "pessoa" separadamente (alguns
@@ -137,7 +164,7 @@ class EPIChecker:
             pessoa.conforme = not confirmado_infracao
             pessoas_analisadas.append(pessoa)
 
-        frame_anotado = self._desenhar_anotacoes(frame.copy(), pessoas_analisadas)
+        frame_anotado = self._desenhar_anotacoes(frame.copy(), pessoas_analisadas, self.poligono_roi)
 
         return ResultadoAnalise(
             camera_id=camera_id,
@@ -147,8 +174,12 @@ class EPIChecker:
         )
 
     @staticmethod
-    def _desenhar_anotacoes(frame: np.ndarray, pessoas: List[PessoaAnalisada]) -> np.ndarray:
+    def _desenhar_anotacoes(frame: np.ndarray, pessoas: List[PessoaAnalisada], poligono_roi: np.ndarray | None = None) -> np.ndarray:
         """Desenha as caixas delimitadoras, rótulos e % de confiança no frame."""
+        # Desenha a ROI se existir
+        if poligono_roi is not None:
+            cv2.polylines(frame, [poligono_roi], isClosed=True, color=(0, 255, 255), thickness=2)
+            
         for pessoa in pessoas:
             cor = _COR_OK if pessoa.conforme else _COR_INFRACAO
             bp = pessoa.bbox_pessoa
