@@ -21,6 +21,9 @@ import logging
 import smtplib
 import threading
 import time
+import json
+import urllib.request
+import urllib.parse
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -101,6 +104,12 @@ class AlertService:
         self._notificar_sistema(alerta, camera_nome, mensagem)
         if settings.alert.email_enabled:
             self._enviar_email_async(camera_nome, mensagem, snapshot_path)
+            
+        if settings.alert.telegram_bot_token and settings.alert.telegram_chat_id:
+            self.enviar_telegram_async(mensagem, snapshot_path)
+            
+        if settings.alert.whatsapp_api_url and settings.alert.whatsapp_api_token:
+            self.enviar_whatsapp_async(mensagem, snapshot_path)
 
         return alerta
 
@@ -172,18 +181,74 @@ class AlertService:
     # Pontos de extensão para integrações futuras (não implementadas,
     # mas com assinatura pronta e documentada para facilitar o próximo dev).
     # ------------------------------------------------------------------
-    def enviar_telegram(self, mensagem: str, snapshot_path: Optional[str] = None) -> None:
-        """
-        TODO: implementar usando `settings.alert.telegram_bot_token` e
-        `telegram_chat_id`, via chamada HTTP à API do Telegram Bot:
-            POST https://api.telegram.org/bot<TOKEN>/sendPhoto
-        """
-        raise NotImplementedError("Integração com Telegram ainda não implementada.")
+    def enviar_telegram_async(self, mensagem: str, snapshot_path: str | None = None) -> None:
+        t = threading.Thread(target=self.enviar_telegram, args=(mensagem, snapshot_path), daemon=True)
+        t.start()
 
-    def enviar_whatsapp(self, mensagem: str, snapshot_path: Optional[str] = None) -> None:
-        """
-        TODO: implementar integração via API oficial do WhatsApp Business
-        (ou provedor terceirizado como Twilio/Z-API), usando
-        `settings.alert.whatsapp_api_url` e `whatsapp_api_token`.
-        """
-        raise NotImplementedError("Integração com WhatsApp ainda não implementada.")
+    def enviar_telegram(self, mensagem: str, snapshot_path: str | None = None) -> None:
+        token = settings.alert.telegram_bot_token
+        chat_id = settings.alert.telegram_chat_id
+
+        if not token or not chat_id:
+            logger.warning("Telegram Bot Token ou Chat ID não configurados.")
+            return
+
+        try:
+            if snapshot_path and Path(snapshot_path).exists():
+                url = f"https://api.telegram.org/bot{token}/sendPhoto"
+                # Monta multipart/form-data via urllib para upload da imagem JPEG
+                boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+                data = []
+                data.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode())
+                data.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n{mensagem}\r\n".encode())
+                
+                with open(snapshot_path, "rb") as f:
+                    filename = Path(snapshot_path).name
+                    data.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"{filename}\"\r\nContent-Type: image/jpeg\r\n\r\n".encode())
+                    data.append(f.read())
+                    data.append(b"\r\n")
+                
+                data.append(f"--{boundary}--\r\n".encode())
+                body = b"".join(data)
+
+                req = urllib.request.Request(url, data=body)
+                req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    logger.info(f"Notificação Telegram enviada com sucesso: {resp.status}")
+            else:
+                url = f"https://api.telegram.org/bot{token}/sendMessage"
+                payload = json.dumps({"chat_id": chat_id, "text": mensagem}).encode('utf-8')
+                req = urllib.request.Request(url, data=payload, method="POST")
+                req.add_header("Content-Type", "application/json")
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    logger.info(f"Notificação Telegram (apenas texto) enviada com sucesso: {resp.status}")
+
+        except Exception as e:
+            logger.error(f"Falha ao enviar mensagem via Telegram: {e}")
+
+    def enviar_whatsapp_async(self, mensagem: str, snapshot_path: str | None = None) -> None:
+        t = threading.Thread(target=self.enviar_whatsapp, args=(mensagem, snapshot_path), daemon=True)
+        t.start()
+
+    def enviar_whatsapp(self, mensagem: str, snapshot_path: str | None = None) -> None:
+        url = settings.alert.whatsapp_api_url
+        token = settings.alert.whatsapp_api_token
+        
+        if not url or not token:
+            logger.warning("WhatsApp API URL ou Token não configurados.")
+            return
+            
+        try:
+            payload_dict = {
+                "message": mensagem
+            }
+            # Em uma implementação real, trataríamos o anexo em base64 se a API suportar
+            payload = json.dumps(payload_dict).encode('utf-8')
+            req = urllib.request.Request(url, data=payload, method="POST")
+            req.add_header("Content-Type", "application/json")
+            req.add_header("Authorization", f"Bearer {token}")
+            
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                logger.info(f"Notificação WhatsApp enviada com sucesso: {resp.status}")
+        except Exception as e:
+            logger.error(f"Falha ao enviar mensagem via WhatsApp: {e}")
