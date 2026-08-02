@@ -49,21 +49,25 @@ class RecordingService:
         return str(caminho)
 
     # ------------------------------------------------------------------
-    def gravar_clipe_async(self, camera_id: int, stream: CameraStream, fps: int = 10) -> None:
+    def gravar_clipe_async(self, camera_id: int, stream: CameraStream, fps: int = 10) -> str:
         """
-        Dispara a gravação do clipe de vídeo em uma thread separada, para
-        não bloquear o pipeline de detecção enquanto captura os frames
-        "pós-evento" (alguns segundos após o disparo do alerta).
+        Dispara a gravação do clipe de vídeo em uma thread separada e retorna o caminho
+        para ser salvo no banco, sem bloquear o pipeline principal.
         """
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        nome_arquivo = f"cam{camera_id}_{timestamp}.mp4"
+        caminho = self.clips_dir / nome_arquivo
+
         t = threading.Thread(
             target=self._gravar_clipe,
-            args=(camera_id, stream, fps),
+            args=(camera_id, stream, fps, caminho),
             daemon=True,
             name=f"clip-recorder-cam-{camera_id}",
         )
         t.start()
+        return str(caminho)
 
-    def _gravar_clipe(self, camera_id: int, stream: CameraStream, fps: int) -> Optional[str]:
+    def _gravar_clipe(self, camera_id: int, stream: CameraStream, fps: int, caminho: Path) -> None:
         import time
 
         # 1) Frames PRÉ-evento (já capturados pelo buffer circular da câmera)
@@ -83,11 +87,7 @@ class RecordingService:
         frames_totais = frames_pre + frames_pos
         if not frames_totais:
             logger.warning(f"[cam {camera_id}] Nenhum frame disponível para gravar clipe.")
-            return None
-
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        nome_arquivo = f"cam{camera_id}_{timestamp}.mp4"
-        caminho = self.clips_dir / nome_arquivo
+            return
 
         altura, largura = frames_totais[0].shape[:2]
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -102,7 +102,6 @@ class RecordingService:
             writer.release()
 
         logger.info(f"Clipe de vídeo salvo: {caminho} ({len(frames_totais)} frames)")
-        return str(caminho)
 
     # ------------------------------------------------------------------
     def limpar_evidencias_antigas(self) -> int:
