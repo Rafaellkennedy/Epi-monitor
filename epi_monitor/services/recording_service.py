@@ -19,7 +19,7 @@ import datetime
 import logging
 import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import cv2
 import numpy as np
@@ -49,59 +49,88 @@ class RecordingService:
         return str(caminho)
 
     # ------------------------------------------------------------------
-    def gravar_clipe_async(self, camera_id: int, stream: CameraStream, fps: int = 10) -> str:
+    def gravar_clipe_async(
+        self,
+        camera_id: int,
+        stream: CameraStream,
+        fps: int = 10,
+        on_complete: Optional[Callable[[Optional[str]], None]] = None,
+    ) -> None:
         """
-        Dispara a gravação do clipe de vídeo em uma thread separada e retorna o caminho
-        para ser salvo no banco, sem bloquear o pipeline principal.
-        """
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        nome_arquivo = f"cam{camera_id}_{timestamp}.mp4"
-        caminho = self.clips_dir / nome_arquivo
+        Dispara a gravação do clipe de vídeo em uma thread separada, para
+        não bloquear o pipeline de detecção enquanto captura os frames
+        "pós-evento" (alguns segundos após o disparo do alerta).
 
+        Args:
+            on_complete: callback opcional chamado ao final da gravação,
+                         recebendo o caminho do arquivo (ou None se falhou).
+        """
         t = threading.Thread(
             target=self._gravar_clipe,
-            args=(camera_id, stream, fps, caminho),
+            args=(camera_id, stream, fps, on_complete),
             daemon=True,
             name=f"clip-recorder-cam-{camera_id}",
         )
         t.start()
-        return str(caminho)
 
-    def _gravar_clipe(self, camera_id: int, stream: CameraStream, fps: int, caminho: Path) -> None:
+    def _gravar_clipe(
+        self,
+        camera_id: int,
+        stream: CameraStream,
+        fps: int,
+        on_complete: Optional[Callable[[Optional[str]], None]] = None,
+    ) -> Optional[str]:
         import time
 
-        # 1) Frames PRÉ-evento (já capturados pelo buffer circular da câmera)
-        frames_pre: List[np.ndarray] = stream.get_pre_buffer()
-
-        # 2) Frames PÓS-evento: aguarda e coleta em tempo real
-        metade_pos_segundos = max(self.clip_duration - len(frames_pre) / max(fps, 1), self.clip_duration / 2)
-        frames_pos: List[np.ndarray] = []
-        intervalo = 1.0 / max(fps, 1)
-        inicio = time.time()
-        while time.time() - inicio < metade_pos_segundos:
-            frame = stream.get_latest_frame()
-            if frame is not None:
-                frames_pos.append(frame)
-            time.sleep(intervalo)
-
-        frames_totais = frames_pre + frames_pos
-        if not frames_totais:
-            logger.warning(f"[cam {camera_id}] Nenhum frame disponível para gravar clipe.")
-            return
-
-        altura, largura = frames_totais[0].shape[:2]
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(str(caminho), fourcc, fps, (largura, altura))
-
+        caminho: Optional[str] = None
         try:
-            for f in frames_totais:
-                if f.shape[:2] != (altura, largura):
-                    f = cv2.resize(f, (largura, altura))
-                writer.write(f)
-        finally:
-            writer.release()
+            # 1) Frames PRÉ-evento (já capturados pelo buffer circular da câmera)
+            frames_pre: List[np.ndarray] = stream.get_pre_buffer()
 
-        logger.info(f"Clipe de vídeo salvo: {caminho} ({len(frames_totais)} frames)")
+            # 2) Frames PÓS-evento: aguarda e coleta em tempo real
+            metade_pos_segundos = max(self.clip_duration - len(frames_pre) / max(fps, 1), self.clip_duration / 2)
+            frames_pos: List[np.ndarray] = []
+            intervalo = 1.0 / max(fps, 1)
+            inicio = time.time()
+            while time.time() - inicio < metade_pos_segundos:
+                frame = stream.get_latest_frame()
+                if frame is not None:
+                    frames_pos.append(frame)
+                time.sleep(intervalo)
+
+            frames_totais = frames_pre + frames_pos
+            if not frames_totais:
+                logger.warning(f"[cam {camera_id}] Nenhum frame disponível para gravar clipe.")
+                return None
+
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            nome_arquivo = f"cam{camera_id}_{timestamp}.mp4"
+            caminho = str(self.clips_dir / nome_arquivo)
+
+            altura, largura = frames_totais[0].shape[:2]
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            writer = cv2.VideoWriter(caminho, fourcc, fps, (largura, altura))
+
+            try:
+                for f in frames_totais:
+                    if f.shape[:2] != (altura, largura):
+                        f = cv2.resize(f, (largura, altura))
+                    writer.write(f)
+            finally:
+                writer.release()
+
+            logger.info(f"Clipe de vídeo salvo: {caminho} ({len(frames_totais)} frames)")
+            return caminho
+        except Exception as e:
+            logger.error(f"Falha ao gravar clipe da câmera {camera_id}: {e}")
+            return None
+        finally:
+            # Sempre chama o callback se fornecido (mesmo em caso de falha)
+            if on_complete:
+                try:
+                    on_complete(caminho)
+                except Exception as cb_err:
+                    logger.error(f"Erro no callback on_complete do clipe: {cb_err}")
 
     # ------------------------------------------------------------------
     def limpar_evidencias_antigas(self) -> int:

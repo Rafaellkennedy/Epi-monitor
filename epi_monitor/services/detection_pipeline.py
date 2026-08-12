@@ -194,13 +194,24 @@ class DetectionPipeline:
                 continue
 
             snapshot_path = self.recording_service.salvar_snapshot(camera_id, resultado.frame_anotado)
-            video_path = self.recording_service.gravar_clipe_async(camera_id, stream, fps=camera.fps_alvo)
 
             evento = EventService.registrar_evento(
                 camera_id=camera_id,
                 pessoa=pessoa,
                 snapshot_path=snapshot_path,
-                video_clip_path=video_path,
+            )
+
+            # Gravação assíncrona do clipe: atualiza o evento quando concluída
+            def _on_clip_ready(caminho_clip: Optional[str]) -> None:
+                try:
+                    if caminho_clip:
+                        EventService.atualizar_clip_evento(evento.id, caminho_clip)
+                except Exception as exc:
+                    logger.error(f"Falha ao atualizar clip do evento {evento.id}: {exc}", exc_info=True)
+
+            self.recording_service.gravar_clipe_async(
+                camera_id, stream, fps=camera.fps_alvo,
+                on_complete=_on_clip_ready,
             )
 
             self.alert_service.disparar_alerta(

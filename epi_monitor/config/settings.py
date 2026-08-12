@@ -97,6 +97,24 @@ class DetectionSettings:
         10: "pessoa",
     })
 
+    # Mapa de equivalência: nome nativo do modelo de terceiros -> nome interno EPI.
+    # Ex.: modelo "Construction Site Safety" do Roboflow tem as classes abaixo.
+    # Classes nativas não listadas aqui mas no `discard_classes` serão descartadas.
+    epi_equivalence_map: dict = field(default_factory=lambda: {
+        "Hardhat": "capacete",
+        "NO-Hardhat": "sem_capacete",
+        "Mask": "mascara",
+        "NO-Mask": "sem_mascara",
+        "Safety Vest": "colete",
+        "NO-Safety Vest": "sem_colete",
+        "Person": "pessoa",
+    })
+
+    # Classes de modelos de terceiros que devem ser descartadas (não são EPIs/pessoas).
+    epi_discard_classes: set = field(default_factory=lambda: {
+        "Safety Cone", "machinery", "vehicle",
+    })
+
 
 @dataclass(frozen=True)
 class CameraSettings:
