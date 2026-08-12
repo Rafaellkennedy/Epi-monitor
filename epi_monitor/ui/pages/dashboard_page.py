@@ -50,6 +50,7 @@ def _card(titulo: str, valor: str) -> QFrame:
     layout.addWidget(lbl_titulo)
     layout.addWidget(lbl_valor)
     layout.addStretch()
+    frame.lbl_titulo = lbl_titulo
     frame.lbl_valor = lbl_valor
     return frame
 
@@ -183,7 +184,7 @@ class DashboardPage(QWidget):
         self.card_cameras_online.lbl_valor.setText(f"{online}/{len(cameras)}")
 
         # Atualiza r\u00f3tulo do card de infra\u00e7\u00f5es com o per\u00edodo
-        self.card_infracoes.findChild(QLabel).setText(
+        self.card_infracoes.lbl_titulo.setText(
             f"INFRA\u00c7\u00d5ES ({self._dias} DIAS)"
         )
 

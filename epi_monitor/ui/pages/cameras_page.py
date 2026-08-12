@@ -43,6 +43,8 @@ def _inferir_tipo_fonte(url: str) -> str:
         return "rtsp"
     if url.startswith("rtsp://") or url.startswith("rtmp://"):
         return "rtsp"
+    if url.startswith("http://") or url.startswith("https://"):
+        return "rtsp"
     if url.isdigit():
         return "webcam"
     return "arquivo"
