@@ -13,7 +13,7 @@ import logging
 from typing import List, Optional, Sequence
 
 from sqlalchemy import select, func
-
+from sqlalchemy.orm import joinedload
 from database.connection import get_session
 from database.models import Evento, Camera
 from models.detection import ResultadoAnalise, PessoaAnalisada
@@ -85,7 +85,7 @@ class EventService:
     ) -> Sequence[Evento]:
         """Consulta paginada/filtrada de eventos para a tela de Histórico."""
         with get_session() as session:
-            stmt = select(Evento).order_by(Evento.data_hora.desc()).limit(limite)
+            stmt = select(Evento).options(joinedload(Evento.camera)).order_by(Evento.data_hora.desc()).limit(limite)
             if camera_id is not None:
                 stmt = stmt.where(Evento.camera_id == camera_id)
             if tipo is not None:
