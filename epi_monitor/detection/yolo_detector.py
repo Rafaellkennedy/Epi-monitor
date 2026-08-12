@@ -14,13 +14,18 @@ Requisitos do modelo:
 
     Datasets públicos recomendados como ponto de partida para treino:
     "Hard Hat Workers Dataset", "Construction Site Safety Dataset" (Roboflow).
+
+Resolução de classes (model-aware):
+    a. Nome nativo do modelo no mapa de equivalência → nome interno EPI
+    b. Classes fora do domínio EPI (ex: machinery, vehicle) → descartadas
+    c. Fallback legado via dict class_names por id quando o mapa não bate
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -30,6 +35,43 @@ from config.settings import settings
 from models.detection import Detection, BoundingBox
 
 logger = logging.getLogger(__name__)
+
+
+def resolver_nome_classe(
+    cls_id: int,
+    native_names: dict,
+    equivalence_map: dict[str, str],
+    discard_classes: set[str],
+    class_names_fallback: dict[int, str],
+    is_fallback_model: bool = False,
+) -> Optional[str]:
+    """
+    Função PURA e testável: resolve o nome da classe a partir do id
+    retornado pelo modelo YOLO.
+
+    Regras (em ordem):
+      a. Se for modelo fallback COCO (yolo11n.pt), usa nomes nativos —
+         sem aplicar mapeamentos EPI (evita falsos positivos).
+      b. Se o nome nativo estiver no mapa de equivalência, retorna o
+         nome interno EPI correspondente.
+      c. Se o nome nativo estiver no conjunto de classes a descartar,
+         retorna None (detecção ignorada).
+      d. Fallback legado: usa dict `class_names` por id (para modelos
+         customizados como `epi_best.pt`).
+    """
+    if is_fallback_model:
+        return native_names.get(cls_id, f"classe_{cls_id}")
+
+    native_name = native_names.get(cls_id, "")
+
+    if native_name in equivalence_map:
+        return equivalence_map[native_name]
+
+    if native_name in discard_classes:
+        return None  # descartar detecção
+
+    # Fallback legado: dict id → nome (modelo customizado treinado)
+    return class_names_fallback.get(cls_id, native_name or f"classe_{cls_id}")
 
 
 class YoloDetector:
@@ -51,6 +93,9 @@ class YoloDetector:
         self.iou = settings.detection.iou_threshold
         self.img_size = settings.detection.img_size
         self.class_names = settings.detection.class_names
+        self.epi_equivalence_map: dict[str, str] = settings.detection.epi_equivalence_map
+        self.epi_discard_classes: set[str] = settings.detection.epi_discard_classes
+        self._is_fallback_model: bool = False
 
         self._model: YOLO | None = None
         self._carregar_modelo()
@@ -78,15 +123,15 @@ class YoloDetector:
         model_file = Path(self.model_path)
         if not model_file.exists():
             logger.warning(
-                f"Modelo customizado não encontrado em '{self.model_path}'. "
-                f"Baixando/usando modelo base 'yolo11n.pt' como fallback. "
+                f"Modelo EPI não encontrado em '{self.model_path}'. "
+                f"detecção de EPI desativada — fallback COCO (yolo11n.pt). "
                 f"IMPORTANTE: treine um modelo específico de EPIs para uso em produção."
             )
-            # Fallback: modelo genérico do Ultralytics (detecta 'person' apenas,
-            # não detecta EPIs). Serve só para não quebrar o sistema em dev/demo.
             self._model = YOLO("yolo11n.pt")
+            self._is_fallback_model = True
         else:
             self._model = YOLO(str(model_file))
+            self._is_fallback_model = False
 
         try:
             self._model.to(self.device)
@@ -125,9 +170,19 @@ class YoloDetector:
 
         for box in result.boxes:
             cls_id = int(box.cls[0].item())
+            nome_classe = resolver_nome_classe(
+                cls_id=cls_id,
+                native_names=result.names,
+                equivalence_map=self.epi_equivalence_map,
+                discard_classes=self.epi_discard_classes,
+                class_names_fallback=self.class_names,
+                is_fallback_model=self._is_fallback_model,
+            )
+            if nome_classe is None:
+                continue  # descartar classes fora do domínio EPI
+
             conf = float(box.conf[0].item())
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            nome_classe = self.class_names.get(cls_id, result.names.get(cls_id, f"classe_{cls_id}"))
 
             detections.append(Detection(
                 classe_id=cls_id,
@@ -161,10 +216,20 @@ class YoloDetector:
         result = results[0]
         for box in result.boxes:
             cls_id = int(box.cls[0].item())
+            nome_classe = resolver_nome_classe(
+                cls_id=cls_id,
+                native_names=result.names,
+                equivalence_map=self.epi_equivalence_map,
+                discard_classes=self.epi_discard_classes,
+                class_names_fallback=self.class_names,
+                is_fallback_model=self._is_fallback_model,
+            )
+            if nome_classe is None:
+                continue  # descartar classes fora do domínio EPI
+
             conf = float(box.conf[0].item())
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             track_id = int(box.id[0].item()) if box.id is not None else None
-            nome_classe = self.class_names.get(cls_id, result.names.get(cls_id, f"classe_{cls_id}"))
 
             detections.append(Detection(
                 classe_id=cls_id,
@@ -202,9 +267,19 @@ class YoloDetector:
             if result.boxes is not None:
                 for box in result.boxes:
                     cls_id = int(box.cls[0].item())
+                    nome_classe = resolver_nome_classe(
+                        cls_id=cls_id,
+                        native_names=result.names,
+                        equivalence_map=self.epi_equivalence_map,
+                        discard_classes=self.epi_discard_classes,
+                        class_names_fallback=self.class_names,
+                        is_fallback_model=self._is_fallback_model,
+                    )
+                    if nome_classe is None:
+                        continue  # descartar classes fora do domínio EPI
+
                     conf = float(box.conf[0].item())
                     x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                    nome_classe = self.class_names.get(cls_id, result.names.get(cls_id, f"classe_{cls_id}"))
 
                     detections.append(Detection(
                         classe_id=cls_id,
