@@ -200,6 +200,10 @@ class CameraManager:
         if len(self._streams) >= settings.camera.max_cameras:
             raise RuntimeError(f"Limite máximo de {settings.camera.max_cameras} câmeras atingido.")
 
+        # Para stream existente antes de recriar, evitando vazamento de thread
+        if config.id in self._streams:
+            self._streams[config.id].stop()
+
         stream = CameraStream(config, on_status_change=on_status_change)
         self._streams[config.id] = stream
         stream.start()

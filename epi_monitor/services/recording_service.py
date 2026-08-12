@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
+import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -80,8 +81,6 @@ class RecordingService:
         fps: int,
         on_complete: Optional[Callable[[Optional[str]], None]] = None,
     ) -> Optional[str]:
-        import time
-
         caminho: Optional[str] = None
         try:
             # 1) Frames PRÉ-evento (já capturados pelo buffer circular da câmera)
@@ -101,7 +100,7 @@ class RecordingService:
             frames_totais = frames_pre + frames_pos
             if not frames_totais:
                 logger.warning(f"[cam {camera_id}] Nenhum frame disponível para gravar clipe.")
-                return None
+                return self._notificar_clipe(None, on_complete)
 
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             nome_arquivo = f"cam{camera_id}_{timestamp}.mp4"
@@ -120,17 +119,24 @@ class RecordingService:
                 writer.release()
 
             logger.info(f"Clipe de vídeo salvo: {caminho} ({len(frames_totais)} frames)")
-            return caminho
+            return self._notificar_clipe(caminho, on_complete)
         except Exception as e:
             logger.error(f"Falha ao gravar clipe da câmera {camera_id}: {e}")
-            return None
-        finally:
-            # Sempre chama o callback se fornecido (mesmo em caso de falha)
-            if on_complete:
-                try:
-                    on_complete(caminho)
-                except Exception as cb_err:
-                    logger.error(f"Erro no callback on_complete do clipe: {cb_err}")
+            return self._notificar_clipe(None, on_complete)
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _notificar_clipe(
+        caminho: Optional[str],
+        on_complete: Optional[Callable[[Optional[str]], None]],
+    ) -> Optional[str]:
+        """Chama o callback on_complete (se existir) e retorna o caminho."""
+        if on_complete is not None:
+            try:
+                on_complete(caminho)
+            except Exception as cb_err:
+                logger.error(f"Erro no callback on_complete do clipe: {cb_err}")
+        return caminho
 
     # ------------------------------------------------------------------
     def limpar_evidencias_antigas(self) -> int:
