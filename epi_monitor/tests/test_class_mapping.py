@@ -5,7 +5,7 @@ e fallback COCO seguro.
 """
 
 import pytest
-from detection.yolo_detector import resolver_nome_classe
+from detection.class_resolver import resolver_nome_classe
 
 
 # Mapa de equivalência do construction model (Roboflow)
