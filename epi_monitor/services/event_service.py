@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import datetime
+import logging
 from typing import List, Optional, Sequence
 
 from sqlalchemy import select, func
@@ -17,6 +18,8 @@ from database.connection import get_session
 from database.models import Evento, Camera
 from models.detection import ResultadoAnalise, PessoaAnalisada
 from models.enums import TipoEvento
+
+logger = logging.getLogger(__name__)
 
 
 class EventService:
@@ -57,6 +60,20 @@ class EventService:
             session.refresh(evento)
             session.expunge(evento)
             return evento
+
+    @staticmethod
+    def atualizar_clip_evento(evento_id: int, caminho_clip: str) -> None:
+        """
+        Atualiza o caminho do vídeo clipe em um evento existente.
+        Thread-safe: usa sessão própria (chamável de threads de background).
+        """
+        with get_session() as session:
+            evento = session.get(Evento, evento_id)
+            if evento:
+                evento.caminho_video_clip = caminho_clip
+                session.commit()
+            else:
+                logger.warning(f"Evento {evento_id} não encontrado para atualizar clip.")
 
     @staticmethod
     def listar_eventos(
@@ -129,10 +146,26 @@ class EventService:
             )
             serie_temporal = [{"dia": str(dia), "infracoes": qtd} for dia, qtd in session.execute(serie_query).all()]
 
+            local_query = (
+                select(
+                    func.coalesce(Camera.localizacao, "Sem local").label("local"),
+                    func.count(Evento.id).label("qtd"),
+                )
+                .join(Evento, Evento.camera_id == Camera.id)
+                .where(Evento.tipo_evento == TipoEvento.INFRACAO, Evento.data_hora >= desde)
+                .group_by(func.coalesce(Camera.localizacao, "Sem local"))
+                .order_by(func.count(Evento.id).desc())
+            )
+            infracoes_por_local = [
+                {"local": local, "infracoes": qtd}
+                for local, qtd in session.execute(local_query).all()
+            ]
+
             return {
                 "total_infracoes": total_infracoes,
                 "total_conformidade": total_conformidade,
                 "taxa_conformidade": round(taxa_conformidade, 1),
                 "ranking_cameras": ranking,
                 "serie_temporal": serie_temporal,
+                "infracoes_por_local": infracoes_por_local,
             }
