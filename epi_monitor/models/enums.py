@@ -50,6 +50,25 @@ class TipoEvento(str, enum.Enum):
     SISTEMA = "sistema"
 
 
+# Rótulos em pt-BR para exibição na UI (os values dos enums não têm acentos
+# para permanecerem seguros como chave de banco/JSON).
+EPI_LABEL_PT_BR: dict[str, str] = {
+    "capacete": "Capacete",
+    "oculos": "Óculos",
+    "colete": "Colete",
+    "mascara": "Máscara",
+    "luvas": "Luvas",
+}
+
+TIPO_EVENTO_LABEL_PT_BR: dict[str, str] = {
+    "conformidade": "Conformidade",
+    "infracao": "Infração",
+    "camera_offline": "Câmera offline",
+    "camera_online": "Câmera online",
+    "sistema": "Sistema",
+}
+
+
 class SeveridadeAlerta(str, enum.Enum):
     """Severidade de um alerta gerado."""
     BAIXA = "baixa"
